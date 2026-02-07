@@ -21,29 +21,44 @@ $user = current_user();
 </head>
 <body class="map-page">
     <main class="map-shell">
-        <header class="map-header">
+        <aside class="map-sidebar">
             <div class="map-brand">
                 <strong>GeoVisor</strong>
                 <span>Panel Geografico</span>
             </div>
-            <div class="map-actions">
+            <div class="map-user">
+                Usuario: <?php echo htmlspecialchars($user['name'], ENT_QUOTES, 'UTF-8'); ?>
+            </div>
+            <div class="map-saved">
+                <div class="map-saved-header">
+                    <h2>Sitios guardados</h2>
+                    <span id="marker-count">0</span>
+                </div>
+                <ul class="map-list" id="saved-list"></ul>
+            </div>
+        </aside>
+
+        <section class="map-content">
+            <div class="map-controls">
                 <form class="map-search" id="search-form">
                     <input id="search-place" type="text" placeholder="Buscar lugar" aria-label="Buscar lugar">
                     <button class="map-button" id="search-place-btn" type="submit">Buscar</button>
                 </form>
-                <button class="map-button secondary" id="locate-me" type="button">Mi ubicacion</button>
-                <button class="map-button" id="add-marker" type="button">Agregar marcador</button>
-                <button class="map-button secondary" id="reset-view" type="button">Reset vista</button>
-                <button class="map-button danger" id="clear-markers" type="button">Limpiar</button>
-                <a class="map-button secondary" href="logout.php">Cerrar sesion</a>
+                <div class="map-control-buttons">
+                    <button class="map-button secondary" id="locate-me" type="button">Mi ubicacion</button>
+                    <button class="map-button" id="add-marker" type="button">Agregar marcador</button>
+                    <button class="map-button secondary" id="reset-view" type="button">Reset vista</button>
+                    <button class="map-button danger" id="clear-markers" type="button">Limpiar</button>
+                    <a class="map-button secondary" href="logout.php">Cerrar sesion</a>
+                </div>
             </div>
-        </header>
 
-        <div id="map" class="map-canvas" aria-label="Mapa interactivo"></div>
+            <div id="map" class="map-canvas" aria-label="Mapa interactivo"></div>
 
-        <div class="map-footer">
-            Usuario: <?php echo htmlspecialchars($user['name'], ENT_QUOTES, 'UTF-8'); ?> · Arrastra los marcadores para reubicarlos.
-        </div>
+            <div class="map-footer">
+                Arrastra los marcadores para reubicarlos. Haz clic en un sitio guardado para volar al punto.
+            </div>
+        </section>
     </main>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"

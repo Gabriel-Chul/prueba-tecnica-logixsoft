@@ -1,12 +1,43 @@
 <?php
 
 require __DIR__ . '/../app/bootstrap.php';
+require_once __DIR__ . '/../app/services/RateLimiter.php';
+
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+if ($method !== 'GET') {
+    http_response_code(405);
+    header('Content-Type: application/json');
+    echo json_encode(['error' => 'Metodo no permitido.']);
+    exit;
+}
+
+$ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+$rateLimiter = new RateLimiter(
+    $config['storage_dir'],
+    $config['rate_limit_search']['window_seconds'],
+    $config['rate_limit_search']['max_attempts']
+);
+
+$rateKey = 'search:' . $ip;
+if ($rateLimiter->tooManyAttempts($rateKey)) {
+    http_response_code(429);
+    header('Content-Type: application/json');
+    echo json_encode(['error' => 'Demasiadas solicitudes.']);
+    exit;
+}
 
 $query = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 if ($query === '') {
     http_response_code(400);
     header('Content-Type: application/json');
     echo json_encode(['error' => 'Consulta vacia.']);
+    exit;
+}
+
+if (strlen($query) > 80) {
+    http_response_code(400);
+    header('Content-Type: application/json');
+    echo json_encode(['error' => 'Consulta demasiado larga.']);
     exit;
 }
 
@@ -17,7 +48,7 @@ $params = http_build_query([
 ]);
 $url = $endpoint . '?' . $params;
 
-$userAgent = 'GeoVisor/1.0 (contacto@example.com)';
+$userAgent = 'GeoVisor/1.0 (GabrielChul@Outlook.com)';
 
 $response = null;
 $status = 0;
@@ -67,6 +98,7 @@ if ($response === null) {
 }
 
 if ($response === null || $response === false) {
+    $rateLimiter->hit($rateKey);
     http_response_code(502);
     header('Content-Type: application/json');
     echo json_encode(['error' => 'No se pudo consultar el servicio.']);
@@ -110,3 +142,4 @@ echo json_encode([
         'display_name' => $label,
     ],
 ]);
+$rateLimiter->clear($rateKey);

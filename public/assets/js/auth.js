@@ -53,6 +53,16 @@ document.addEventListener('DOMContentLoaded', () => {
                         loginSuccess.textContent = data.message;
                         loginSuccess.hidden = false;
                     }
+                    if (data.token) {
+                        const loginToken = document.querySelector('form.auth-form input[name="csrf_token"]');
+                        const registerToken = document.querySelector('#register-form input[name="csrf_token"]');
+                        if (loginToken) {
+                            loginToken.value = data.token;
+                        }
+                        if (registerToken) {
+                            registerToken.value = data.token;
+                        }
+                    }
                     registerForm.reset();
                     return;
                 }

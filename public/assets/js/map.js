@@ -21,8 +21,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const storageKey = 'geoVisorMarkers';
     let markers = [];
+    let nextMarkerId = 1;
     let userMarker = null;
     let searchMarker = null;
+    const listElement = document.getElementById('saved-list');
+    const countElement = document.getElementById('marker-count');
 
     const markerIcon = L.icon({
         iconUrl: 'assets/img/marcador.png',
@@ -37,17 +40,32 @@ document.addEventListener('DOMContentLoaded', () => {
         iconAnchor: [16, 16],
     });
 
+    const formatCoords = (lat, lng) => `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+
+    const updateCount = () => {
+        if (countElement) {
+            countElement.textContent = String(markers.length);
+        }
+    };
+
     const saveMarkers = () => {
-        const data = markers.map((marker) => {
-            const position = marker.getLatLng();
-            return { lat: position.lat, lng: position.lng };
-        });
+        const data = markers.map((entry) => ({
+            id: entry.id,
+            labelBase: entry.labelBase,
+            lat: entry.lat,
+            lng: entry.lng,
+        }));
         localStorage.setItem(storageKey, JSON.stringify(data));
+        updateCount();
     };
 
     const clearMarkers = () => {
-        markers.forEach((marker) => marker.remove());
+        markers.forEach((entry) => entry.marker.remove());
         markers = [];
+        if (listElement) {
+            listElement.innerHTML = '';
+        }
+        nextMarkerId = 1;
         if (searchMarker) {
             searchMarker.remove();
             searchMarker = null;
@@ -55,14 +73,107 @@ document.addEventListener('DOMContentLoaded', () => {
         saveMarkers();
     };
 
-    const addMarker = (lat, lng) => {
+    const buildLabel = (labelBase, lat, lng) => `${labelBase} - Lat: ${formatCoords(lat, lng)}`;
+
+    const createListItem = (entry) => {
+        if (!listElement) {
+            return;
+        }
+
+        const item = document.createElement('li');
+        item.className = 'map-item';
+        item.dataset.id = String(entry.id);
+
+        const title = document.createElement('div');
+        title.className = 'map-item-title';
+        title.textContent = buildLabel(entry.labelBase, entry.lat, entry.lng);
+
+        const removeButton = document.createElement('button');
+        removeButton.className = 'map-item-remove';
+        removeButton.type = 'button';
+        removeButton.setAttribute('aria-label', 'Eliminar marcador');
+        removeButton.textContent = '🗑';
+
+        removeButton.addEventListener('click', (event) => {
+            event.stopPropagation();
+            removeMarker(entry.id);
+        });
+
+        item.addEventListener('click', () => {
+            map.flyTo([entry.lat, entry.lng], 15, { animate: true, duration: 0.6 });
+            entry.marker.openPopup();
+        });
+
+        item.appendChild(title);
+        item.appendChild(removeButton);
+        listElement.appendChild(item);
+    };
+
+    const updateListItem = (entry) => {
+        if (!listElement) {
+            return;
+        }
+
+        const item = listElement.querySelector(`.map-item[data-id="${entry.id}"]`);
+        if (!item) {
+            return;
+        }
+
+        const title = item.querySelector('.map-item-title');
+        if (title) {
+            title.textContent = buildLabel(entry.labelBase, entry.lat, entry.lng);
+        }
+    };
+
+    const removeMarker = (id) => {
+        const index = markers.findIndex((entry) => entry.id === id);
+        if (index === -1) {
+            return;
+        }
+
+        const entry = markers[index];
+        entry.marker.remove();
+        markers.splice(index, 1);
+
+        if (listElement) {
+            const item = listElement.querySelector(`.map-item[data-id="${id}"]`);
+            if (item) {
+                item.remove();
+            }
+        }
+
+        saveMarkers();
+    };
+
+    const addMarker = (lat, lng, labelBase = null, skipSave = false) => {
+        const label = labelBase || `Marcador #${nextMarkerId++}`;
         const marker = L.marker([lat, lng], {
             draggable: true,
             icon: markerIcon,
         }).addTo(map);
-        marker.on('dragend', saveMarkers);
-        markers.push(marker);
-        saveMarkers();
+        marker.bindPopup(label);
+
+        const entry = {
+            id: nextMarkerId - 1,
+            labelBase: label,
+            lat,
+            lng,
+            marker,
+        };
+
+        marker.on('dragend', () => {
+            const position = marker.getLatLng();
+            entry.lat = position.lat;
+            entry.lng = position.lng;
+            updateListItem(entry);
+            saveMarkers();
+        });
+
+        markers.push(entry);
+        createListItem(entry);
+        if (!skipSave) {
+            saveMarkers();
+        }
     };
 
     const showUserLocation = (position) => {
@@ -160,11 +271,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 return false;
             }
 
+            let maxId = 0;
             data.forEach((item) => {
                 if (typeof item.lat === 'number' && typeof item.lng === 'number') {
-                    addMarker(item.lat, item.lng);
+                    const id = typeof item.id === 'number' ? item.id : ++maxId;
+                    const label = item.labelBase || `Marcador #${id}`;
+                    maxId = Math.max(maxId, id);
+                    nextMarkerId = maxId + 1;
+                    addMarker(item.lat, item.lng, label, true);
                 }
             });
+            saveMarkers();
             return true;
         } catch (error) {
             return false;
@@ -173,9 +290,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const loaded = loadMarkers();
     if (!loaded) {
-        addMarker(9.9281, -84.0907);
-        addMarker(9.9358, -84.0996);
-        addMarker(9.9156, -84.0794);
+        addMarker(9.9281, -84.0907, 'Marcador #1', true);
+        addMarker(9.9358, -84.0996, 'Marcador #2', true);
+        addMarker(9.9156, -84.0794, 'Marcador #3', true);
+        saveMarkers();
     }
 
 
