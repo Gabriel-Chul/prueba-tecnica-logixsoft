@@ -29,6 +29,11 @@ App web con:
    ```
 3. Abre `http://localhost:8000`.
 
+## Capturas
+![Login](public/assets/img/login.png)
+![Registro](public/assets/img/register.png)
+![Mapa](public/assets/img/map.png)
+
 ## Seguridad aplicada
 - Sesiones endurecidas (strict mode, cookies only, samesite strict).
 - CSRF con rotacion de token.
