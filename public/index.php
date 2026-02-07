@@ -1,6 +1,7 @@
 <?php
 
 require __DIR__ . '/../app/bootstrap.php';
+require_once __DIR__ . '/../app/services/RateLimiter.php';
 
 if (current_user()) {
     redirect('map.php');
@@ -29,8 +30,17 @@ $csrf = new CsrfService($config['csrf_key']);
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $formType = $_POST['form_type'] ?? 'login';
     $token = $_POST['csrf_token'] ?? '';
+    $sameOrigin = is_same_origin_request();
 
-    if (!$csrf->validate($token)) {
+    if (!$sameOrigin) {
+        $errorMessage = 'Origen de solicitud no valido.';
+        if ($formType === 'register') {
+            $registerErrors[] = $errorMessage;
+            $activePanel = 'register';
+        } else {
+            $loginErrors[] = $errorMessage;
+        }
+    } elseif (!$csrf->validate($token)) {
         if ($formType === 'register') {
             $registerErrors[] = 'Token CSRF invalido.';
             $activePanel = 'register';
@@ -38,13 +48,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $loginErrors[] = 'Token CSRF invalido.';
         }
     } else {
-        $users = new UserStore($config['storage_dir']);
+        $users = new UserStore($config['storage_dir'], $config['encryption_key']);
         $rateLimiter = new RateLimiter(
             $config['storage_dir'],
             $config['rate_limit']['window_seconds'],
             $config['rate_limit']['max_attempts']
         );
-        $auth = new AuthService($users, $rateLimiter, $config['storage_dir']);
+        $emailLimiter = new RateLimiter(
+            $config['storage_dir'],
+            $config['rate_limit_email']['window_seconds'],
+            $config['rate_limit_email']['max_attempts']
+        );
+        $auth = new AuthService($users, $rateLimiter, $emailLimiter, $config['storage_dir']);
 
         if ($formType === 'register') {
             $registerName = $_POST['name'] ?? '';
@@ -62,14 +77,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($result['ok']) {
                 if (is_ajax_request()) {
+                    $newToken = $csrf->rotate();
                     header('Content-Type: application/json');
                     echo json_encode([
                         'ok' => true,
                         'message' => 'Registro exitoso. Ahora puedes iniciar sesion.',
+                        'token' => $newToken,
                     ]);
                     exit;
                 }
 
+                $csrf->rotate();
                 flash_set('success', 'Registro exitoso. Ahora puedes iniciar sesion.');
                 redirect('index.php');
             }
@@ -82,6 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $result = $auth->login($email, $password, $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
             if ($result['ok']) {
+                $csrf->rotate();
                 redirect('map.php');
             }
 
@@ -145,10 +164,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="hidden" name="form_type" value="login">
 
                     <label for="login_email">Correo electronico</label>
-                    <input id="login_email" name="email" type="email" required value="<?php echo htmlspecialchars($email, ENT_QUOTES, 'UTF-8'); ?>">
+                    <input id="login_email" name="email" type="email" autocomplete="username" required value="<?php echo htmlspecialchars($email, ENT_QUOTES, 'UTF-8'); ?>">
 
                     <label for="login_password">Contrasena</label>
-                    <input id="login_password" name="password" type="password" required>
+                    <input id="login_password" name="password" type="password" autocomplete="current-password" required>
 
                     <button class="auth-button" type="submit">Ingresar</button>
                 </form>
@@ -181,16 +200,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="hidden" name="form_type" value="register">
 
                     <label for="register_name">Nombre</label>
-                    <input id="register_name" name="name" type="text" required value="<?php echo htmlspecialchars($registerName, ENT_QUOTES, 'UTF-8'); ?>">
+                    <input id="register_name" name="name" type="text" autocomplete="name" required value="<?php echo htmlspecialchars($registerName, ENT_QUOTES, 'UTF-8'); ?>">
 
                     <label for="register_email">Correo electronico</label>
-                    <input id="register_email" name="email" type="email" required value="<?php echo htmlspecialchars($registerEmail, ENT_QUOTES, 'UTF-8'); ?>">
+                    <input id="register_email" name="email" type="email" autocomplete="username" required value="<?php echo htmlspecialchars($registerEmail, ENT_QUOTES, 'UTF-8'); ?>">
 
                     <label for="register_password">Contrasena</label>
-                    <input id="register_password" name="password" type="password" required>
+                    <input id="register_password" name="password" type="password" autocomplete="new-password" required>
 
                     <label for="register_confirm">Confirmar contrasena</label>
-                    <input id="register_confirm" name="confirm" type="password" required>
+                    <input id="register_confirm" name="confirm" type="password" autocomplete="new-password" required>
 
                     <button class="auth-button" type="submit">Crear cuenta</button>
                 </form>

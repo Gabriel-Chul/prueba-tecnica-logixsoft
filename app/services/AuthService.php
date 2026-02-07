@@ -1,15 +1,20 @@
 <?php
 
+require_once __DIR__ . '/RateLimiter.php';
+require_once __DIR__ . '/UserStore.php';
+
 class AuthService
 {
     private UserStore $users;
     private RateLimiter $rateLimiter;
+    private RateLimiter $emailLimiter;
     private string $storageDir;
 
-    public function __construct(UserStore $users, RateLimiter $rateLimiter, string $storageDir)
+    public function __construct(UserStore $users, RateLimiter $rateLimiter, RateLimiter $emailLimiter, string $storageDir)
     {
         $this->users = $users;
         $this->rateLimiter = $rateLimiter;
+        $this->emailLimiter = $emailLimiter;
         $this->storageDir = $storageDir;
     }
 
@@ -55,13 +60,21 @@ class AuthService
     {
         $errors = $this->validateLogin($email, $password);
         $key = 'login:' . $ip;
+        $emailKey = $email !== '' ? 'login-email:' . $email : '';
 
         if ($this->rateLimiter->tooManyAttempts($key)) {
             $errors[] = 'Demasiados intentos. Intenta mas tarde.';
         }
 
+        if ($emailKey !== '' && $this->emailLimiter->tooManyAttempts($emailKey)) {
+            $errors[] = 'La cuenta esta temporalmente bloqueada.';
+        }
+
         if (!empty($errors)) {
             $this->rateLimiter->hit($key);
+            if ($emailKey !== '') {
+                $this->emailLimiter->hit($emailKey);
+            }
             $this->logEvent('login_fail', $ip);
             return ['ok' => false, 'errors' => $errors];
         }
@@ -69,6 +82,9 @@ class AuthService
         $user = $this->users->findByEmail($email);
         if (!$user || !password_verify($password, $user['passwordHash'])) {
             $this->rateLimiter->hit($key);
+            if ($emailKey !== '') {
+                $this->emailLimiter->hit($emailKey);
+            }
             $this->logEvent('login_fail', $ip);
             return ['ok' => false, 'errors' => ['Credenciales invalidas.']];
         }
@@ -81,6 +97,9 @@ class AuthService
         ];
 
         $this->rateLimiter->clear($key);
+        if ($emailKey !== '') {
+            $this->emailLimiter->clear($emailKey);
+        }
         $this->logEvent('login_ok', $ip);
 
         return ['ok' => true];
@@ -135,7 +154,11 @@ class AuthService
     private function logEvent(string $event, string $ip): void
     {
         $filePath = rtrim($this->storageDir, '/\\') . '/audit.log';
-        $line = sprintf("%s\t%s\t%s\n", date('c'), $ip, $event);
+        $timestamp = date('c');
+        $payload = sprintf("%s\t%s\t%s", $timestamp, $ip, $event);
+        $previousHash = $this->readLastHash($filePath);
+        $hash = hash('sha256', $previousHash . $payload);
+        $line = $payload . "\t" . $hash . "\n";
         $handle = fopen($filePath, 'a');
         if ($handle === false) {
             return;
@@ -146,5 +169,21 @@ class AuthService
         fflush($handle);
         flock($handle, LOCK_UN);
         fclose($handle);
+    }
+
+    private function readLastHash(string $filePath): string
+    {
+        if (!file_exists($filePath)) {
+            return '';
+        }
+
+        $lines = @file($filePath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        if (!$lines) {
+            return '';
+        }
+
+        $last = $lines[count($lines) - 1];
+        $parts = explode("\t", $last);
+        return $parts[3] ?? '';
     }
 }

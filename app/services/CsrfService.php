@@ -26,4 +26,10 @@ class CsrfService
 
         return hash_equals($_SESSION[$this->sessionKey], $token);
     }
+
+    public function rotate(): string
+    {
+        unset($_SESSION[$this->sessionKey]);
+        return $this->token();
+    }
 }

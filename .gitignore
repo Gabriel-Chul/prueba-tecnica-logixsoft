@@ -1,0 +1,7 @@
+# Runtime storage files
+storage/*.json
+storage/audit.log
+
+# OS junk
+.DS_Store
+Thumbs.db
